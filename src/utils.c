@@ -215,14 +215,25 @@ char * get_request_server(int fd, size_t *filelength)
 int setup_connection(int port)
 {
     //TODO: create a sockaddr_in struct to hold the address of the server   
-
+    struct sockaddr_in new_addr;
     //TODO: create a socket and save the file descriptor to sockfd
-   
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        perror("Socket creation failed");
+        exit(1);
+    }
     //TODO: assign IP, PORT to the sockaddr_in struct
-
+    new_addr.sin_family = AF_INET;
+    new_addr.sin_port = htons(port);
+    new_addr.sin_addr.s_addr = server_address.sin_addr.s_addr;
     //TODO: connect to the server
-   
+    if (connect(fd, &new_addr, sizeof(struct sockaddr_in)) < 0) {
+        perror("Connection failed");
+        close(fd);
+        exit(1);
+    }
     //TODO: return the file descriptor for the socket
+    return fd;
 }
 
 
@@ -236,13 +247,34 @@ int setup_connection(int port)
 int send_file_to_server(int socket, FILE *file, int size) 
 {
     //TODO: send the file size packet
-   
+    if (write(socket, &size, sizeof(size)) != sizeof(size)) {
+        perror("Failed to send file size");
+        return -1;
+    }
 
     //TODO: send the file data
-   
+    char buffer[1024];
+    int bytes_sent = 0;
+    int bytes_read;
+
+    while (bytes_sent < size) {
+        bytes_read = fread(buffer, 1, sizeof(buffer), file);
+        if (bytes_read < 0) {
+            perror("Failed to read from file");
+            return -1;
+        }
+
+        int bytes_written = write(socket, buffer, bytes_read);
+        if (bytes_written < 0) {
+            perror("Failed to send file data");
+            return -1;
+        }
+
+        bytes_sent += bytes_written;
+    }
 
     // TODO: return 0 on success, -1 on failure
-   
+   return 0;
 }
 
 /**********************************************
@@ -254,22 +286,45 @@ int send_file_to_server(int socket, FILE *file, int size)
 int receive_file_from_server(int socket, const char *filename) 
 {
     //TODO: create a buffer to hold the file data
-    
+    char buffer[1024];
 
     //TODO: open the file for writing binary data
-   
+    if(fopen(filename, "wb") == NULL){
+      perror("Failed to open file");
+      return -1;
+    }
     
    //TODO: create a packet_t to hold the packet data
-    
+   packet_t packet;
+
    //TODO: receive the response packet
-  
+    if(recv(socket, &packet, sizeof(packet), 0) < 0){
+      perror("Failed to receive");
+      return -1;
+    }
 
     //TODO: get the size of the image from the packet
-   
-   
-
+    int file_size = packet.size;
+    if (file_size <= 0) {
+        fprintf(stderr, "Invalid file size received\n");
+        return -1;
+    } 
    //TODO: recieve the file data and write it to the file
-    
+    int bytes_received = 0;
+    while (bytes_received < file_size) {
+        int chunk_size = recv(socket, buffer, sizeof(buffer), 0);
+        if (chunk_size <= 0) {
+            perror("Failed to receive file data");
+            return -1;
+        }
+
+    if (fwrite(buffer, 1, chunk_size, filename) < (size_t)chunk_size) {
+            perror("Failed to write to file");
+            return -1;
+        }
+        bytes_received += chunk_size;
+    }
     //TODO: return 0 on success, -1 on failure
+    return 0;
 }
 
