@@ -26,25 +26,16 @@
 #include <limits.h>
 #include <stdint.h>
 
-//TODO: Declare a global variable to hold the file descriptor for the server socket
-int server_socket;
-
-//TODO: Declare a global variable to hold the mutex lock for the server socket
-pthread_mutex_t server_socket_mtx = PTHREAD_MUTEX_INITIALIZER;
-
-//TODO: Declare a gloabl socket address struct to hold the address of the server
-struct sockaddr_in server_address;
-
+int server_socket; // server socket fd
+pthread_mutex_t server_socket_mtx = PTHREAD_MUTEX_INITIALIZER; // socket mutex
+struct sockaddr_in server_address; // server address
 
 // SERVER FUNCTIONS
 
-/**********************************************
- * init
-   - port is the number of the port you want the server to be
-     started on
-   - initializes the connection acception/handling system
-   - if init encounters any errors, it will call exit().
-************************************************/
+/**
+ * init(): initializes the connectino acception/handling system by creating a socket and binding it to the specified port.
+ * if any system calls fail, calls exit().
+ */
 void init(int port) {
   int socket_fd;
   //struct sockaddr_in address;
@@ -87,13 +78,10 @@ void init(int port) {
   fflush(stdout);
 }
 
-
-/**********************************************
- * accept_connection - takes no parameters
-   - returns a file descriptor for further request processing.
-   - if the return value is negative, the thread calling
-     accept_connection must should ignore request.
-***********************************************/
+/**
+ * accept_connection(): accepts a connection from the server socket, and creates a new socket to handle it.
+ * uses a mutex lock to ensure no race conditions. if any system calls fail, returns -1;
+ */
 int accept_connection(void) {
   struct sockaddr_in new_addr;
   socklen_t addr_len = sizeof(new_addr);
@@ -123,13 +111,10 @@ int accept_connection(void) {
 }
 
 
-/**********************************************
- * send_file_to_client
-   - socket is the file descriptor for the socket
-   - buffer is the file data you want to send
-   - size is the size of the file you want to send
-   - returns 0 on success, -1 on failure 
-************************************************/
+/**
+ * send_file_to_client(): used to send a file to the client, from the server, using the specified socket.
+ * if any system calls fail, returns -1.
+ */
 int send_file_to_client(int socket, char * buffer, int size) {
   // Send the file size packet
   packet_t packet;
@@ -154,15 +139,12 @@ int send_file_to_client(int socket, char * buffer, int size) {
   return 0;
 }
 
-
-/**********************************************
- * get_request_server
-   - fd is the file descriptor for the socket
-   - filelength is a pointer to a size_t variable that will be set to the length of the file
-   - returns a pointer to the file data
-************************************************/
-char * get_request_server(int fd, size_t *filelength)
-{
+/**
+ * get_request_server(): receives an image from the client, using the given file descriptor. saves the length in
+ * the in/out variable filelength. returns a pointer to the array containing the image. if any system calls fail,
+ * exits
+ */
+char * get_request_server(int fd, size_t *filelength) {
   // Receive the size packet
   packet_t packet;
   if (recv(fd, &packet, sizeof(packet), 0) < 0) {
@@ -200,131 +182,123 @@ char * get_request_server(int fd, size_t *filelength)
 }
 
 
-/*
-################################################
-##############Client Functions##################
-################################################
-*/
+// CLIENT FUNCTIONS
 
-/**********************************************
- * setup_connection
-   - port is the number of the port you want the client to connect to
-   - initializes the connection to the server
-   - if setup_connection encounters any errors, it will call exit().
-************************************************/
-int setup_connection(int port)
-{
-    //TODO: create a sockaddr_in struct to hold the address of the server   
+/**
+ * setup_connection(): initializes the connection with the server. It will create a socket and bind it to
+ * the specified port argument. If any of the system calls fail, it will terminate.
+ */
+int setup_connection(int port) { 
     struct sockaddr_in new_addr;
-    //TODO: create a socket and save the file descriptor to sockfd
+
+    // Create a socket
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
         perror("Socket creation failed");
         exit(1);
     }
-    //TODO: assign IP, PORT to the sockaddr_in struct
+
+    // Construct address
     new_addr.sin_family = AF_INET;
     new_addr.sin_port = htons(port);
     new_addr.sin_addr.s_addr = server_address.sin_addr.s_addr;
-    //TODO: connect to the server
-    if (connect(fd, &new_addr, sizeof(struct sockaddr_in)) < 0) {
+
+    // Connect to the server
+    if (connect(fd, (struct sockaddr*)&new_addr, sizeof(new_addr)) < 0) {
         perror("Connection failed");
         close(fd);
         exit(1);
     }
-    //TODO: return the file descriptor for the socket
+
+    // Return the file descriptor for the socket
     return fd;
 }
 
+/**
+ * send_file_to_server(): writes the size of the file to the server through the specified socket. Then, writes the file
+ * in chunks. If any system call fails, it will return -1.
+ */
+int send_file_to_server(int socket, FILE *file, int size) {
+  packet_t packet;
+  packet.size = size;
 
-/**********************************************
- * send_file_to_server
-   - socket is the file descriptor for the socket
-   - file is the file pointer to the file you want to send
-   - size is the size of the file you want to send
-   - returns 0 on success, -1 on failure
-************************************************/
-int send_file_to_server(int socket, FILE *file, int size) 
-{
-    //TODO: send the file size packet
-    if (write(socket, &size, sizeof(size)) != sizeof(size)) {
-        perror("Failed to send file size");
-        return -1;
-    }
+  //TODO: send the file size packet
+  if (write(socket, &packet, sizeof(packet)) != sizeof(packet)) {
+      perror("Failed to send file size");
+      return -1;
+  }
 
-    //TODO: send the file data
-    char buffer[1024];
-    int bytes_sent = 0;
-    int bytes_read;
+  //TODO: send the file data
+  char buffer[1024];
+  int bytes_sent = 0;
+  int bytes_read;
 
-    while (bytes_sent < size) {
-        bytes_read = fread(buffer, 1, sizeof(buffer), file);
-        if (bytes_read < 0) {
-            perror("Failed to read from file");
-            return -1;
-        }
+  while (bytes_sent < size) {
+      bytes_read = fread(buffer, 1, sizeof(buffer), file);
+      if (bytes_read < 0) {
+          perror("Failed to read from file");
+          return -1;
+      }
 
-        int bytes_written = write(socket, buffer, bytes_read);
-        if (bytes_written < 0) {
-            perror("Failed to send file data");
-            return -1;
-        }
+      int bytes_written = write(socket, buffer, bytes_read);
+      if (bytes_written < 0) {
+          perror("Failed to send file data");
+          return -1;
+      }
 
-        bytes_sent += bytes_written;
-    }
+      bytes_sent += bytes_written;
+  }
 
     // TODO: return 0 on success, -1 on failure
    return 0;
 }
 
-/**********************************************
- * receive_file_from_server
-   - socket is the file descriptor for the socket
-   - filename is the name of the file you want to save
-   - returns 0 on success, -1 on failure
-************************************************/
-int receive_file_from_server(int socket, const char *filename) 
-{
-    //TODO: create a buffer to hold the file data
-    char buffer[1024];
+/**
+ * receive_file_from_server(): acts as an intermediary between the socket and the output file. Reads information from the socket
+ * and places it into the file. If any system call fails, returns -1.
+ */
+int receive_file_from_server(int socket, const char *filename) {
+  //TODO: create a buffer to hold the file data
+  char buffer[1024];
 
-    //TODO: open the file for writing binary data
-    if(fopen(filename, "wb") == NULL){
-      perror("Failed to open file");
+  // Open the file
+  FILE* fh = fopen(filename, "wb");
+  if(fh == NULL){
+    perror("Failed to open file");
+    return -1;
+  }
+  
+  // Receive the size packet
+  packet_t packet;
+  if(recv(socket, &packet, sizeof(packet), 0) < 0){
+    perror("Failed to receive");
+    return -1;
+  }
+
+  // Get the size of the image
+  int file_size = packet.size;
+  if (file_size <= 0) {
+      fprintf(stderr, "Invalid file size received\n");
       return -1;
-    }
-    
-   //TODO: create a packet_t to hold the packet data
-   packet_t packet;
+  } 
 
-   //TODO: receive the response packet
-    if(recv(socket, &packet, sizeof(packet), 0) < 0){
-      perror("Failed to receive");
-      return -1;
-    }
-
-    //TODO: get the size of the image from the packet
-    int file_size = packet.size;
-    if (file_size <= 0) {
-        fprintf(stderr, "Invalid file size received\n");
+  // Receive data and write to file
+  int bytes_received = 0;
+  while (bytes_received < file_size) {
+    int received = recv(socket, buffer, sizeof(buffer), 0);
+    if (received <= 0) {
+        perror("Failed to receive file data");
         return -1;
-    } 
-   //TODO: recieve the file data and write it to the file
-    int bytes_received = 0;
-    while (bytes_received < file_size) {
-        int chunk_size = recv(socket, buffer, sizeof(buffer), 0);
-        if (chunk_size <= 0) {
-            perror("Failed to receive file data");
-            return -1;
-        }
-
-    if (fwrite(buffer, 1, chunk_size, filename) < (size_t)chunk_size) {
-            perror("Failed to write to file");
-            return -1;
-        }
-        bytes_received += chunk_size;
     }
-    //TODO: return 0 on success, -1 on failure
-    return 0;
+
+    if (fwrite(buffer, 1, received, fh) < (size_t)received) {
+          perror("Failed to write to file");
+          return -1;
+    }
+
+    bytes_received += received;
+  }
+
+  return 0;
 }
 

@@ -4,7 +4,7 @@ CFLAGS=-g -Wall -pthread
 SRCDIR=src
 INCDIR=include
 LIBDIR=lib
-OUTPUTDIR=output
+OUTPUTDIR=output/img
 
 all: outdir utils server client
 
@@ -21,6 +21,7 @@ client: $(LIBDIR)/client.o $(LIBDIR)/utils.o
 clean:
 	rm -f server client $(LIBDIR)/utils.o
 	rm -rf $(OUTPUTDIR)
+	rm -f server_log
 
 outdir:
 	mkdir -p $(OUTPUTDIR)
